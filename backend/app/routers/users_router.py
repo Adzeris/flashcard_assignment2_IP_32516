@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from ..auth import get_password_hash
 from ..database import get_db
 from ..deps import get_admin_user, get_current_user
-from ..models import User, ViewHistory
+from ..models import Flashcard, Test, User, ViewHistory
 from ..schemas import UserOut, UserUpdate, ViewHistoryOut
 
 router = APIRouter(prefix="/api/users", tags=["Users"])
@@ -101,6 +101,20 @@ def delete_user(
         raise HTTPException(status_code=404, detail="User not found")
     if user.id == admin_user.id:
         raise HTTPException(status_code=400, detail="You cannot delete your own account")
+
+    flashcard_ids = [
+        card_id
+        for (card_id,) in db.query(Flashcard.id).filter(Flashcard.user_id == user_id).all()
+    ]
+    if flashcard_ids:
+        (
+            db.query(ViewHistory)
+            .filter(ViewHistory.flashcard_id.in_(flashcard_ids))
+            .delete(synchronize_session=False)
+        )
+    db.query(ViewHistory).filter(ViewHistory.user_id == user_id).delete(synchronize_session=False)
+    db.query(Flashcard).filter(Flashcard.user_id == user_id).delete(synchronize_session=False)
+    db.query(Test).filter(Test.user_id == user_id).delete(synchronize_session=False)
 
     db.delete(user)
     db.commit()
